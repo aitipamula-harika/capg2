@@ -1,0 +1,119 @@
+to-do
+
+writeback staging
+modified cloudformation template -  added cloudwatch rule
+sns notification for writeback pipeline as well
+Removed approval gate
+
+ncx
+sonarqube
+jenkins backup
+pull code wrt tag -- 
+Next RnD task is to migrate a library to Nexus, and modify gradle to pull dependencies from Nexus
+
+jenkins -- git parameter
+
+
+Helped dinesh re Github
+error: RPC failed; curl 56 OpenSSL SSL_read: Connection was reset, errno 10054
+fatal: the remote end hung up unexpectedly
+fatal: early EOF
+fatal: index-pack failed
+
+git config --global http.postBuffer 524288000 
+git config --global http.postBuffer 1048576000
+
+Checked all the writeback pipelines for support to recap team
+added cloudfront invalidation to all the environments
+liquibase-instead of jenkins job created a codebuild project
+10/9/2020
+instead of keeping recap and writeback lambda code in seperate S3 Bucket, it can be in same bucket, i.e. that of current recap s3 bucket.
+
+
+ssh-rsa AAAAE2VjZHNhLXNoYTItbmlzdHA1MjEAAAAIbmlzdHA1MjEAAACFBAALqH1mQTLtA5Z4K5NM5fvOc3S2MFa7pBRRAqIXoFX3CsVyXpl4gqvPiNJiPkpBmDkdNNQpv6nLRKLjX/d1OrEf5wCWB58s89CgWlxPSGMiaE8VwHYqBc+Kv4R4Vhox7Sk10Lg7DcFBFs6JUMG6DOepJkH26WNlNELWY11w1tgTG595Pg==
+
+
+
+roles
+author pipeline
+writeback pipeline
+cloudtrail
+webhooks
+
+Sharan 
+lambda templates
+s3 buckets
+
+Sreenivas-
+db
+slide
+
+
+refs/heads/Stage$
+
+
+
+MediaManagement Frontend
+
+version: 0.2
+env:
+  variables:
+    S3_BUCKET: "nbcmediamanagement-uat-BranchName
+develop
+*/${BranchName}
+
+frontend-use1"
+phases:
+  install:
+    runtime-versions:
+      nodejs: 10
+  pre_build:
+    commands:
+    - echo Installing source NPM dependencies...
+    - npm install
+    - npm install -g @angular/cli
+  build:
+    commands:
+    - echo Build started on `date`
+    - npm install && npm run build:uat 
+  post_build:
+    commands:
+    - aws s3 sync dist/media-management s3://${S3_BUCKET} --delete
+    - aws cloudfront create-invalidation --distribution-id E38W9E46RRE5L5 --paths "/*" "/assets/jsons/*"
+    - echo Build completed on `date`
+artifacts:
+  files:
+    - '**/*'
+  base-directory: 'dist*'
+  discard-paths: yes
+
+
+
+
+
+Backend
+
+
+version: 0.2
+phases:
+  install:
+    commands:
+    - echo Entered the install phase....
+  build:
+    commands:
+    - echo Build started on `date` 
+    - apt-get install gcc zlib1g-dev build-essential unzip
+    - wget https://github.com/graalvm/graalvm-ce-builds/releases/download/vm-20.2.0/graalvm-ce-java11-linux-amd64-20.2.0.tar.gz
+    - tar -xvzf graalvm-ce-java11-linux-amd64-20.2.0.tar.gz
+    - mv graalvm-ce-java11-20.2.0/ /usr/lib/jvm
+    - export PATH=/usr/lib/jvm/graalvm-ce-java11-20.2.0/bin:$PATH
+    - export JAVA_HOME=/usr/lib/jvm/graalvm-ce-java11-20.2.0
+    - java -version
+    - gu install native-image
+    - mvn package -Pnative
+    - sam package --template-file sam-uat.native.yaml --s3-bucket nbcmediamanagement-backend-use1 --output-template-file sam-uat.jvm-out.yaml
+artifacts:
+  files:
+    - 'target/function.zip'
+    - 'sam-uat.jvm-out.yaml'
+

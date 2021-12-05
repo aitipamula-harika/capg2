@@ -1,0 +1,39 @@
+Generate a Private Key The Private Key is used to decrypt messages sent to the server. Keep this safe and secret! Use any password when prompted (we’ll remove it later). 
+openssl genrsa -des3 -out domain.key 1024
+	Generate a Certificate Signing Request (CSR) The CSR contains the Public Key, used to encrypt messages, and information about the application so the end user (visitor) can see, so enter the information accordingly.
+	openssl req -nodes -newkey rsa:2048 -keyout domain.key -out domain.csr
+	Remove the Password from the Private Key
+	cp domain.key domain.key.password openssl rsa -in domain.key.password -out domain.key
+	
+	
+	Generate the Certificate Make sure to set the number of days before expiration, set to 1 year below. 
+	openssl x509 -req -days 365 -in domain.csr -signkey domain.key -out domain.crt
+	Open the AWS Console to upload your certificate
+	
+
+		
+Open the AWS Console
+		Open the EC2 Dashboard then view “Load Balancers”
+		Select any load balancer or create a new one (You don’t have to assign it to this ELB)
+		Click on the Listeners tab of the load balancer
+		Select HTTPS for a new listener and under SSL Certificate click “Select”
+		Choose “Upload a new SSL Certificate” and give it a name
+	
+	
+	Copy the Private Key to the “Private Key” field
+	
+
+		
+Output the private key to the command line openssl rsa -in domain.key -text
+		Copy everything from the “Begin” to the “End” tags (inclusive)
+	
+	
+	Copy the Certificate to the “Public Key Certificate” field
+	
+
+		
+Output the certificate to the command line openssl x509 -inform PEM -in domain.crt
+		Copy everything from the “Begin” to the “End” tags (inclusive)
+	
+	
+	Save the SSL Cert in AWS

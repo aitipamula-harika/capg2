@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: The CloudFormation template for the CodePipeline.
+
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+  SourceBucket:
+    Description: 'S3 source bucket'
+    Type: String
+    Default: 's3-w2-7006051-d-chronos'
+  GitHubSourceObjectKey:
+    Description: 'S3 source artifact'
+    Type: String
+    Default: 'chronos_ui_SourceCode.zip'
+  GitHubUrl:
+    Description: 'S3 source artifact'
+    Type: String
+    Default: 'https://<host-name>/<user-name>/<repository-name>'
+  TemplateSourceObjectKey:
+  #cloudformation template for ECS Fargate-Cluster
+    Description: 'S3 source artifact'
+    Type: String
+    Default: 'chronos_ui_template.zip'    
+  GitHubToken: 
+  # "NoEcho" is set to true, for security, so token won't be visible when examining the resulting stack
+    NoEcho: true    
+    Type: String
+    Description: Generate personal access token
+    Default: '90e6d00c3b490f0898343d13ffdf195aaf40f0e3'
+  ResourcesRoleArn:
+    Description: 'Role for resources'
+    Type: String
+    Default: 'arn:aws:iam::446334170252:role/Research_Chronos_Dev_Team'    
+
+Resources:
+
+  S3CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: no_artifacts
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:4.0
+        Type: LINUX_CONTAINER
+      Name: chronos_UI_Ghe_CodeBuildProject #change the name 
+      ServiceRole: !Ref ResourcesRoleArn
+      SourceVersion: Dev_CodeBuild
+      Source:
+        Type: GITHUB_ENTERPRISE
+        Auth:
+          Resource: !Ref GitHubToken
+          Type: OAUTH
+        Location: !Ref GitHubUrl
+        BuildSpec: |
+            version: 0.2
+            phases:
+                build:
+                  commands:
+                  - zip -r chronos_ui_SourceCode.zip .   
+                  - aws s3 cp chronos_ui_SourceCode.zip s3://s3-w2-7006051-d-chronos/
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: no_artifacts
+      Environment: 
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: True
+        Type: LINUX_CONTAINER
+      Name: chronos_UI_CodeBuildProject #change the name 
+      ServiceRole: !Ref ResourcesRoleArn
+      SourceVersion: Dev_CodeBuild
+      Source:
+        Type: GITHUB_ENTERPRISE
+        Auth:
+          Resource: !Ref GitHubToken
+          Type: OAUTH
+        Location: !Ref GitHubUrl
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+              - echo Logging in to Amazon ECR...
+              - aws --version
+              - $(aws ecr get-login --region us-west-2 --no-include-email)
+              - IMAGE_NAME=chronos_ui_mvp
+              - REPOSITORY_URI=446334170252.dkr.ecr.us-west-2.amazonaws.com/chronos_ui_mvp
+              - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+              - IMAGE_TAG=${COMMIT_HASH:=latest}
+            build:
+              commands:
+              - echo Build started on `date`
+              - echo Building the Docker image...
+              - docker-compose build
+              - docker tag $IMAGE_NAME:latest $REPOSITORY_URI:latest
+              - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+            post_build:
+              commands:
+                - echo Build completed on `date`
+                - echo Pushing the Docker images...
+                - docker push $REPOSITORY_URI:latest
+                - docker push $REPOSITORY_URI:$IMAGE_TAG
+                - printf '{"ImageURI":"%s:%s"}' $ECR_REPOSITORY_URI $IMAGE_TAG > imageDetail.json
+          artifacts:
+            files:
+              - imageDetail.json
+
+  # Create CodePipeline with 3 stages (Source and Build)
+  CodePipeLine:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !Ref ResourcesRoleArn
+        
+      Stages:
+        # Download source code from Github Repo to source-output-artifacts path in S3 Bucket
+        - Name: Source
+          Actions: 
+          - InputArtifacts: []
+            Name: Source
+            ActionTypeId: 
+              Category: Source
+              Owner: AWS
+              Provider: S3
+              Version: 1
+            Configuration:
+              S3Bucket: !Ref SourceBucket
+              S3ObjectKey: !Ref GitHubSourceObjectKey
+              PollForSourceChanges: false
+            RunOrder: 1
+            OutputArtifacts:
+              - Name: chronos-ui-source-artifacts  #change the name as per repository-name
+              
+
+          - Name: Template
+            ActionTypeId: 
+              Category: Source
+              Owner: AWS
+              Provider: S3
+              Version: 1
+            Configuration:
+              S3Bucket: !Ref SourceBucket
+              S3ObjectKey: !Ref TemplateSourceObjectKey
+              PollForSourceChanges: false
+            RunOrder: 1
+            OutputArtifacts:
+              - Name: chronos-ui-template-source-artifacts #change the name as per repository-name
+        
+        # Build the project using the BuildProject and Output build artifacts to build-output-artifacts path in S3 Bucket
+        - Name: Build
+          Actions:
+          - Name: Build
+            ActionTypeId:
+              Category: Build
+              Owner: AWS
+              Version: 1
+              Provider: CodeBuild
+            OutputArtifacts:
+              - Name: chronos-ui-build-artifacts    #change the name as per repository-name
+            InputArtifacts:
+              - Name: chronos-ui-source-artifacts   #change the name as per repository-name
+            Configuration:
+                ProjectName: !Ref CodeBuildProject 
+            RunOrder: 1              
+           
+        # Deploy the project by executing Fargate-Cluster.yml file in the Source code with Cloudformation.
+        - Name: Deploy
+          Actions:
+          - Name: Deploy
+            ActionTypeId:
+              Category: Deploy
+              Owner: AWS
+              Version: 1
+              Provider: CloudFormation
+            InputArtifacts:
+              - Name: chronos-ui-build-artifacts    #check name mentioned previously
+              - Name: chronos-ui-template-source-artifacts  #check name mentioned previously
+            Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                ParameterOverrides: !Sub |
+                  {
+                    "ImageUrl" : { "Fn::GetParam" : ["build-output-artifacts", "imageDetail.json", "ImageURI"] },  # mention parameters required to overide in deploying template
+                  }
+                RoleArn: !Ref ResourcesRoleArn 
+                StackName: chronos-ui-mvp   #change the stack has per requirement
+                TemplatePath: chronos-ui-template-source-artifacts::chronos_UI_template/chronos_ui.yml.yaml  #mention the path of template
+            RunOrder: 1
+      ArtifactStore:
+        Type: S3
+        Location: s3-w2-7006051-d-chronos
+
+  AmazonCloudWatchEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      State: ENABLED
+      EventPattern:
+        source:
+          - aws.s3
+        detail-type:
+          - 'AWS API Call via CloudTrail'
+        detail:
+          eventSource:
+            - s3.amazonaws.com
+          eventName:
+            - PutObject
+            - CompleteMultipartUpload
+            - CopyObject
+          requestParameters:
+            bucketName:
+              - !Ref SourceBucket
+            key:
+              - !Ref GitHubSourceObjectKey
+      Targets:
+        -
+          Arn:
+            !Join [ '', [ 'arn:aws:codepipeline:', !Ref 'AWS::Region', ':', !Ref 'AWS::AccountId', ':', !Ref CodePipeLine] ]
+          RoleArn: arn:aws:iam::446334170252:role/ecsEventsRole 
+          Id: codepipeline

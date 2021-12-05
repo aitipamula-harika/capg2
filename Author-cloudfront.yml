@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'CloudFront for Angular front-end deployment'
+Resources:
+  AuthoringDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+        - DomainName: authoring-staging-frontend.s3.amazonaws.com  
+          OriginPath: /primeauthortool
+          Id: S3-authoring-staging-frontend/primeauthortool
+          S3OriginConfig:
+            OriginAccessIdentity: origin-access-identity/cloudfront/E2MFBCL2M2YPJ4
+        Enabled: 'true'
+        Comment: Authoring Origin
+        DefaultRootObject: index.html
+        #Aliases:
+        # - primesurvey.nbcuni.com
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+          #- OPTIONS
+          #- PATCH
+          #- POST
+          #- PUT
+          CachedMethods:
+            - HEAD
+            - GET
+          TargetOriginId: S3-authoring-staging-frontend/primeauthortool
+          ForwardedValues:
+            QueryString: 'false'
+            Cookies:
+              Forward: none
+            
+        #   - 1234567890EX
+        #   - 1234567891EX
+          ViewerProtocolPolicy: allow-all
+          MaxTTL: 31536000
+          MinTTL: 0
+          DefaultTTL: 86400
+          # Logging:
+          #   Enabled: false
+          #   IncludeCookies: false
+          #   Bucket: ''
+          #   Prefix: ''
+        PriceClass: 'PriceClass_All'
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+        ViewerCertificate:
+          # AcmCertificateArn: arn:aws:acm:us-west-2:153279871056:certificate/b8331495-ac5a-4c7e-9407-fd39fde5f6ee
+          # SslSupportMethod: sni-only
+          # MinimumProtocolVersion: TLSv1
+          CloudFrontDefaultCertificate: 'true' 
+        HttpVersion: http2
+        IPV6Enabled: true
+      Tags:
+        - Key: Environment
+          Value: Staging
+        - Key: ProjectId
+          Value:  ProjectID
+        - Key: Owner
+          Value: Mahadevia Paras
+        - Key: CreatedBy
+        
+          Value: Sharan Patil
+        - Key: BusinessUnit
+          Value: TV Entertainment
+        - Key: Project
+          Value: Prime Survey
